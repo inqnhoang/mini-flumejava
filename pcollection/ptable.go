@@ -35,3 +35,16 @@ func groupByKey[K comparable, V any](pt *PTable[K, V]) *PTable[K, []V] {
 
 	return out
 }
+
+func combineValues[K comparable, V any](pt *PTable[K, []V], reducFn func([]V) V) *PTable[K, V] {
+	out := &PTable[K, V]{}
+
+	pt.addDependency(func() {
+		temp := make([]KV[K, V], 0, len(pt.items))
+		for i, kv := range pt.items {
+			temp[i] = KV[K, V]{Key: kv.Key, Value: reducFn(kv.Value)}
+		}
+		out.executed = true
+	})
+	return out
+}

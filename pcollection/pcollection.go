@@ -14,7 +14,7 @@ func (pc *PCollection[T]) addDependency(fn func()) {
 	pc.dependents = append(pc.dependents, fn)
 }
 
-func parallelDo[T, R any](pc *PCollection[T], fn func(T) R) *PCollection[R] {
+func parallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
 	// TODO not currency safe
 	out := &PCollection[R]{}
 	pc.addDependency(func() {
@@ -22,7 +22,7 @@ func parallelDo[T, R any](pc *PCollection[T], fn func(T) R) *PCollection[R] {
 			if out.elements == nil {
 				out.elements = make([]R, len(pc.elements))
 			}
-			out.elements[i] = fn(v)
+			out.elements[i] = mapFn(v)
 		}
 		out.executed = true
 	})
