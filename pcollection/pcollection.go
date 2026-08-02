@@ -1,7 +1,8 @@
 package pcollection
 
 import (
-	"mini-javaflume/pipeline"
+	"mini-flumejava/pipeline"
+	u "mini-flumejava/util"
 )
 
 type PCollection[T any] struct {
@@ -11,8 +12,10 @@ type PCollection[T any] struct {
 	wrapper     *pipeline.NodeWrapper
 }
 
-func NewPCollection[T any](elements []T) *PCollection[T] {
-	return &PCollection[T]{elements: elements}
+func NewPCollection[T any](p *pipeline.Pipeline, elements []T) *PCollection[T] {
+	pc := &PCollection[T]{elements: elements, executed: true}
+	pc.wrapper = p.Register(pc)
+	return pc
 }
 
 func (pc *PCollection[T]) Materialize() {
@@ -23,24 +26,32 @@ func (pc *PCollection[T]) Materialize() {
 	pc.executed = true
 }
 
+func (pc *PCollection[T]) Elements() []T {
+	return pc.elements
+}
+
 func (pc *PCollection[T]) Pipeline() *pipeline.Pipeline {
 	return pc.wrapper.Pipeline()
 }
 
 func (pc *PCollection[T]) NodeWrapper() *pipeline.NodeWrapper {
-	return pc.NodeWrapper()
+	return pc.wrapper
 }
 
-func (pc *PCollection[T]) Length() int {
+func (pc *PCollection[T]) Run() {
+	pc.Pipeline().Run()
+}
+
+func (pc *PCollection[T]) length() int {
 	return len(pc.elements)
 }
 
 // TODO: remove dependents & use nodewrappers
-func parallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
+func ParallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
 	// TODO not currency safe
 	out := &PCollection[R]{}
 	out.materialize = func() {
-		out.elements = mapSlice(pc.elements, mapFn)
+		out.elements = u.MapSlice(pc.elements, mapFn)
 	}
 
 	// DEFER
@@ -50,19 +61,10 @@ func parallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
 	return out
 }
 
-func flatten[T any](sources ...*PCollection[T]) *PCollection[T] {
+func Flatten[T any](sources ...*PCollection[T]) *PCollection[T] {
 	// TODO not currency safe
-	out := &PCollection[T]{}
-	out.materialize = func() {
-		length := 0
-		for _, src := range sources {
-			length += src.Length()
-		}
-
-		out.elements = make([]T, 0, length)
-		for _, src := range sources {
-			out.elements = append(out.elements, src.elements...)
-		}
+	if len(sources) == 0 {
+		panic("flatten: at least one source required")
 	}
 
 	p := sources[0].Pipeline()
@@ -72,9 +74,27 @@ func flatten[T any](sources ...*PCollection[T]) *PCollection[T] {
 		}
 	}
 
-	out.wrapper = p.Register(out, mapSlice(sources, func(s *PCollection[T]) *pipeline.NodeWrapper {
+	out := &PCollection[T]{}
+	out.materialize = func() {
+		for _, src := range sources {
+			src.Materialize()
+		}
+
+		length := 0
+		for _, src := range sources {
+			length += src.length()
+		}
+
+		out.elements = make([]T, 0, length)
+		for _, src := range sources {
+			out.elements = append(out.elements, src.elements...)
+		}
+	}
+
+	deps := u.MapSlice(sources, func(s *PCollection[T]) *pipeline.NodeWrapper {
 		return s.wrapper
-	})...)
+	})
+	out.wrapper = p.Register(out, deps...)
 
 	return out
 }

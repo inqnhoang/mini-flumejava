@@ -1,13 +1,14 @@
 package pcollection
 
 import (
-	"mini-javaflume/pipeline"
+	"mini-flumejava/pipeline"
 )
 
 type KV[K comparable, V any] struct {
 	Key   K
 	Value V
 }
+
 type PTable[K comparable, V any] struct {
 	items       []KV[K, V]
 	materialize func() // needs this to be materialize to run funcs within the array
@@ -15,8 +16,10 @@ type PTable[K comparable, V any] struct {
 	wrapper     *pipeline.NodeWrapper
 }
 
-func NewPTable[K comparable, V any](items []KV[K, V]) *PTable[K, V] {
-	return &PTable[K, V]{items: items}
+func NewPTable[K comparable, V any](p *pipeline.Pipeline, items []KV[K, V]) *PTable[K, V] {
+	pt := &PTable[K, V]{items: items, executed: true}
+	pt.wrapper = p.Register(pt)
+	return pt
 }
 
 func (pt *PTable[K, V]) Materialize() {
@@ -27,22 +30,32 @@ func (pt *PTable[K, V]) Materialize() {
 	pt.executed = true
 }
 
+func (pt *PTable[K, V]) Items() []KV[K, V] {
+	return pt.items
+}
+
 func (pt *PTable[K, V]) Pipeline() *pipeline.Pipeline {
 	return pt.wrapper.Pipeline()
 }
 
 func (pt *PTable[K, V]) NodeWrapper() *pipeline.NodeWrapper {
-	return pt.NodeWrapper()
+	return pt.wrapper
 }
 
-func (pt *PTable[K, V]) Length() int {
+func (pt *PTable[K, V]) Run() {
+	pt.Pipeline().Run()
+}
+
+func (pt *PTable[K, V]) length() int {
 	return len(pt.items)
 }
 
-func groupByKey[K comparable, V any](pt *PTable[K, V]) *PTable[K, []V] {
+func GroupByKey[K comparable, V any](pt *PTable[K, V]) *PTable[K, []V] {
 	// TODO not currency safe
 	out := &PTable[K, []V]{}
 	out.materialize = func() {
+		pt.Materialize()
+
 		temp := make(map[K][]V)
 		for _, pv := range pt.items {
 			temp[pv.Key] = append(temp[pv.Key], pv.Value)
@@ -60,11 +73,13 @@ func groupByKey[K comparable, V any](pt *PTable[K, V]) *PTable[K, []V] {
 	return out
 }
 
-func combineValues[K comparable, V any, R any](pt *PTable[K, []V], reducFn func([]V) R) *PTable[K, R] {
+func CombineValues[K comparable, V any, R any](pt *PTable[K, []V], reducFn func([]V) R) *PTable[K, R] {
 	// TODO not currency safe
 	out := &PTable[K, R]{}
 	out.materialize = func() {
-		out.items = make([]KV[K, R], 0, pt.Length())
+		pt.Materialize()
+
+		out.items = make([]KV[K, R], 0, pt.length())
 		for _, kv := range pt.items {
 			out.items = append(out.items, KV[K, R]{Key: kv.Key, Value: reducFn(kv.Value)})
 		}
