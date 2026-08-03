@@ -14,7 +14,7 @@ type PCollection[T any] struct {
 
 func NewPCollection[T any](p *pipeline.Pipeline, elements []T) *PCollection[T] {
 	pc := &PCollection[T]{elements: elements, executed: true}
-	pc.wrapper = p.Register(pc)
+	pc.wrapper = p.Register(pipeline.OpSource, pc)
 	return pc
 }
 
@@ -56,7 +56,13 @@ func ParallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
 
 	// DEFER
 	p := pc.Pipeline()
-	out.wrapper = p.Register(out, pc.NodeWrapper())
+	out.wrapper = p.Register(pipeline.OpParallelDo, out, pc.NodeWrapper())
+
+	out.wrapper.Rebuild = func(newInput *pipeline.NodeWrapper) *pipeline.NodeWrapper {
+		newPc := newInput.Ds.(*PCollection[T])
+		dup := ParallelDo(newPc, mapFn)
+		return dup.wrapper
+	}
 
 	return out
 }
@@ -94,7 +100,7 @@ func Flatten[T any](sources ...*PCollection[T]) *PCollection[T] {
 	deps := u.MapSlice(sources, func(s *PCollection[T]) *pipeline.NodeWrapper {
 		return s.wrapper
 	})
-	out.wrapper = p.Register(out, deps...)
+	out.wrapper = p.Register(pipeline.OpFlatten, out, deps...)
 
 	return out
 }

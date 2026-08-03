@@ -10,29 +10,36 @@ func NewPipeline() *Pipeline {
 	return &Pipeline{}
 }
 
-func (p *Pipeline) Register(new Node, dependencies ...*NodeWrapper) *NodeWrapper {
+func (p *Pipeline) Register(opKind OpKind, new Node, dependencies ...*NodeWrapper) *NodeWrapper {
 	nw := &NodeWrapper{
 		Ds:           new,
+		Kind:         opKind,
 		Dependencies: dependencies,
 		pipeline:     p,
 		remaining:    len(dependencies),
 	}
 
 	for _, dep := range dependencies {
-		dep.addDependent(nw)
+		dep.AddDependent(nw)
 	}
 
 	p.addNode(nw)
 	return nw
 }
 
+func (p *Pipeline) Path() []*NodeWrapper {
+	return p.nodes
+}
+
 func (p *Pipeline) Run() {
-	for _, nw := range p.sort() {
+	p.Sort()
+
+	for _, nw := range p.Sort() {
 		nw.Ds.Materialize()
 	}
 }
 
-func (p *Pipeline) sort() []*NodeWrapper {
+func (p *Pipeline) Sort() []*NodeWrapper {
 	n := p.length()
 	q := make([]*NodeWrapper, 0, n)
 	path := make([]*NodeWrapper, 0, n)
@@ -57,6 +64,18 @@ func (p *Pipeline) sort() []*NodeWrapper {
 
 	}
 	return path
+}
+
+func (p *Pipeline) RemoveNodeIdx(idx int) {
+	if idx < 0 || idx >= p.length() {
+		panic("RemoveNodeIdx: out of bounds")
+	}
+
+	if idx == p.length()-1 {
+		p.nodes = p.nodes[:idx]
+	} else {
+		p.nodes = append(p.nodes[:idx], p.nodes[idx+1:]...)
+	}
 }
 
 func (p *Pipeline) addNode(nw *NodeWrapper) {

@@ -18,7 +18,7 @@ type PTable[K comparable, V any] struct {
 
 func NewPTable[K comparable, V any](p *pipeline.Pipeline, items []KV[K, V]) *PTable[K, V] {
 	pt := &PTable[K, V]{items: items, executed: true}
-	pt.wrapper = p.Register(pt)
+	pt.wrapper = p.Register(pipeline.OpSource, pt)
 	return pt
 }
 
@@ -50,14 +50,14 @@ func (pt *PTable[K, V]) length() int {
 	return len(pt.items)
 }
 
-func GroupByKey[K comparable, V any](pt *PTable[K, V]) *PTable[K, []V] {
-	// TODO not currency safe
+func GroupByKey[K comparable, V any](pc *PCollection[KV[K, V]]) *PTable[K, []V] {
+	// TODO not concurrency safe
 	out := &PTable[K, []V]{}
 	out.materialize = func() {
-		pt.Materialize()
+		pc.Materialize()
 
 		temp := make(map[K][]V)
-		for _, pv := range pt.items {
+		for _, pv := range pc.elements {
 			temp[pv.Key] = append(temp[pv.Key], pv.Value)
 		}
 
@@ -67,8 +67,8 @@ func GroupByKey[K comparable, V any](pt *PTable[K, V]) *PTable[K, []V] {
 		}
 	}
 
-	p := pt.Pipeline()
-	out.wrapper = p.Register(out, pt.wrapper)
+	p := pc.Pipeline()
+	out.wrapper = p.Register(pipeline.OpGroupByKey, out, pc.NodeWrapper())
 
 	return out
 }
@@ -86,6 +86,6 @@ func CombineValues[K comparable, V any, R any](pt *PTable[K, []V], reducFn func(
 	}
 
 	p := pt.Pipeline()
-	out.wrapper = p.Register(out, pt.wrapper)
+	out.wrapper = p.Register(pipeline.OpCombineValues, out, pt.wrapper)
 	return out
 }

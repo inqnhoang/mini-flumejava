@@ -70,7 +70,7 @@ func TestFlattenRejectsDifferentPipelines(t *testing.T) {
 func TestGroupByKey(t *testing.T) {
 	tt := tester.NewTester()
 
-	pairs := tester.MockPTable(tt, []pcollection.KV[string, int]{
+	pairs := tester.MockPCollection(tt, []pcollection.KV[string, int]{
 		{Key: "apple", Value: 1},
 		{Key: "apple", Value: 1},
 		{Key: "banana", Value: 1},
@@ -95,7 +95,7 @@ func TestGroupByKey(t *testing.T) {
 func TestCombineValues(t *testing.T) {
 	tt := tester.NewTester()
 
-	pairs := tester.MockPTable(tt, []pcollection.KV[string, int]{
+	pairs := tester.MockPCollection(tt, []pcollection.KV[string, int]{
 		{Key: "apple", Value: 1},
 		{Key: "apple", Value: 1},
 		{Key: "banana", Value: 1},
@@ -121,5 +121,41 @@ func TestCombineValues(t *testing.T) {
 	}
 	if got["banana"] != 1 {
 		t.Errorf("expected banana=1, got %d", got["banana"])
+	}
+}
+
+func TestWordCountEndToEnd(t *testing.T) {
+	tt := tester.NewTester()
+
+	words := tester.MockPCollection(tt, []string{"a", "b", "a", "c", "a", "b"})
+
+	pairs := pcollection.ParallelDo(words, func(w string) pcollection.KV[string, int] {
+		return pcollection.KV[string, int]{Key: w, Value: 1}
+	})
+
+	grouped := pcollection.GroupByKey(pairs) // ParallelDo's output plugs straight in, no bridge needed
+	counts := pcollection.CombineValues(grouped, func(vs []int) int {
+		total := 0
+		for _, v := range vs {
+			total += v
+		}
+		return total
+	})
+
+	tt.Pipeline.Run()
+
+	got := map[string]int{}
+	for _, kv := range counts.Items() {
+		got[kv.Key] = kv.Value
+	}
+
+	want := map[string]int{"a": 3, "b": 2, "c": 1}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("word %q: expected count %d, got %d", k, v, got[k])
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("expected %d distinct words, got %d (%v)", len(want), len(got), got)
 	}
 }
