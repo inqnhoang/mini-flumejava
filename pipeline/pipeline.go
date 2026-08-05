@@ -2,6 +2,7 @@ package pipeline
 
 import u "mini-flumejava/util"
 
+// Pipeline represents the graph structure of PCollection & PTable operations
 type Pipeline struct {
 	nodes []*NodeWrapper
 }
@@ -27,10 +28,12 @@ func (p *Pipeline) Register(opKind OpKind, new Node, dependencies ...*NodeWrappe
 	return nw
 }
 
+// Returns path of Node
 func (p *Pipeline) Path() []*NodeWrapper {
 	return p.nodes
 }
 
+// Runs the full pipeline, assumes they come in unsorted
 func (p *Pipeline) Run() {
 	p.Sort()
 
@@ -39,6 +42,29 @@ func (p *Pipeline) Run() {
 	}
 }
 
+// Remove Node at index, idx
+func (p *Pipeline) RemoveNodeIdx(idx int) {
+	if idx < 0 || idx >= p.length() {
+		panic("RemoveNodeIdx: out of bounds")
+	}
+
+	if idx == p.length()-1 {
+		p.nodes = p.nodes[:idx]
+	} else {
+		p.nodes = append(p.nodes[:idx], p.nodes[idx+1:]...)
+	}
+}
+
+func (p *Pipeline) AddNode(nw *NodeWrapper) {
+	p.nodes = append(p.nodes, nw)
+}
+
+// Returns the amount of nodes within the pipeline
+func (p *Pipeline) length() int {
+	return len(p.nodes)
+}
+
+// TopoSorts Path using Khan's Algorithm
 func (p *Pipeline) Sort() []*NodeWrapper {
 	n := p.length()
 	q := make([]*NodeWrapper, 0, n)
@@ -64,24 +90,4 @@ func (p *Pipeline) Sort() []*NodeWrapper {
 
 	}
 	return path
-}
-
-func (p *Pipeline) RemoveNodeIdx(idx int) {
-	if idx < 0 || idx >= p.length() {
-		panic("RemoveNodeIdx: out of bounds")
-	}
-
-	if idx == p.length()-1 {
-		p.nodes = p.nodes[:idx]
-	} else {
-		p.nodes = append(p.nodes[:idx], p.nodes[idx+1:]...)
-	}
-}
-
-func (p *Pipeline) AddNode(nw *NodeWrapper) {
-	p.nodes = append(p.nodes, nw)
-}
-
-func (p *Pipeline) length() int {
-	return len(p.nodes)
 }

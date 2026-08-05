@@ -2,7 +2,39 @@ package optimizer
 
 import "mini-flumejava/pipeline"
 
-// TODO add comments before I forget what I cooked
+/*
+Sinks all flattens within the pipeline if the flatten satisfies:
+  - Has only one dependent
+  - Its dependent is a single ParallelDo
+
+It performs the following steps:
+  - Rebuilds each nodes within the path recursively
+  - Uses memoization to reduce Node exploration
+  - Memo stores a mapping of Node to its rebuilt dependencies
+  - Add each newly built edge to the pipeline
+
+Base case:
+  - The node is a source
+  - Rebuilds the source with no dependencies and adds it to memo
+
+Intermediate case:
+  - Uses memo to capture rebuilt Node
+  - Takes new or same dependencies and rebuilds the Node
+    with each dependencies
+  - e.g. a sink flatten produces four new dependencies for its immediate
+    ParallelDo, when previously it was the one flatten
+  - Maps node to its dependencies as is to memo (e.g. a Flatten that doesn't have a
+    ParallelDo as its dependent/consumer)
+
+Satisfies SinkFlatten:
+  - Rebuilds each dependency within the flatten (can be
+    any Node type e.g. a previous flatten sunk to > 1 dependencies)
+  - Rebuilds a new edge mapping each captured dependency to the consumer (e.g. 6
+    dependencies will create 6 edges)
+  - Removes Flatten logically & maps consumer to its new rebuilt dependencies
+
+Returns a new *Pipeline
+*/
 func SinkFlattens(p *pipeline.Pipeline) *pipeline.Pipeline {
 	memo := map[*pipeline.NodeWrapper][]*pipeline.NodeWrapper{}
 
@@ -12,6 +44,7 @@ func SinkFlattens(p *pipeline.Pipeline) *pipeline.Pipeline {
 			return built
 		}
 
+		// Sink Flatten
 		if old.Kind == pipeline.OpFlatten &&
 			len(old.Dependants) == 1 &&
 			old.Dependants[0].Kind == pipeline.OpParallelDo {
@@ -36,7 +69,7 @@ func SinkFlattens(p *pipeline.Pipeline) *pipeline.Pipeline {
 			return memo[old]
 		}
 
-		// base case -- move along the path as is
+		// base case & intermediate -- move along the path as is
 		var newDeps []*pipeline.NodeWrapper
 		for _, dep := range old.Dependencies {
 			newDep := rebuild(dep)

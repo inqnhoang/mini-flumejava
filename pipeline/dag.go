@@ -45,6 +45,7 @@ func (nw *NodeWrapper) AddDependencies(dependencies []*NodeWrapper) {
 	}
 }
 
+// Stringify OpKind
 func (k OpKind) String() string {
 	switch k {
 	case OpSource:
