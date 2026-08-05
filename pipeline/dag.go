@@ -19,7 +19,7 @@ type Node interface {
 type NodeWrapper struct {
 	Ds           Node
 	Kind         OpKind
-	Rebuild      func(newInput *NodeWrapper) *NodeWrapper
+	RebuildWith  func(newInputs ...*NodeWrapper) *NodeWrapper
 	Dependants   []*NodeWrapper
 	Dependencies []*NodeWrapper
 	pipeline     *Pipeline

@@ -4,9 +4,15 @@ import (
 	"fmt"
 	o "mini-flumejava/optimizer"
 	pc "mini-flumejava/pcollection"
+	"mini-flumejava/pipeline"
 	"mini-flumejava/tester"
+	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+var debug = os.Getenv("DEBUG") != ""
 
 func Init() *tester.Tester {
 	t := tester.NewTester()
@@ -40,18 +46,38 @@ func Init() *tester.Tester {
 
 	return t
 }
-func TestSinkFlattens(tt *testing.T) {
-	t := Init()
-	path := t.Pipeline.Path()
-	for i := range path {
-		fmt.Printf("%s ", path[i].Kind)
-	}
-	fmt.Println()
+func TestSinkFlattens(t *testing.T) {
+	tt := Init()
+	path := tt.Pipeline.Path()
 
-	o.SinkFlattens(t.Pipeline)
-	path = t.Pipeline.Path()
-	for i := range path {
-		fmt.Printf("%s ", path[i].Kind)
+	if debug {
+		fmt.Printf("BEFORE: ")
+		for i := range path {
+			fmt.Printf("%s ", path[i].Kind)
+		}
+		fmt.Println()
 	}
-	fmt.Println()
+
+	newP := o.SinkFlattens(tt.Pipeline)
+	newP.Sort()
+	path = newP.Path()
+
+	if debug {
+		fmt.Printf("AFTER: ")
+		for i := range path {
+			fmt.Printf("%s ", path[i].Kind)
+		}
+		fmt.Println()
+	}
+
+	out := []pipeline.OpKind{}
+	for _, nw := range newP.Path() {
+		out = append(out, nw.Kind)
+	}
+	// 4x Sources, 8x ParallelDos, 1x GroupByKey
+	expected := []pipeline.OpKind{pipeline.OpSource, pipeline.OpSource, pipeline.OpSource, pipeline.OpSource,
+		pipeline.OpParallelDo, pipeline.OpParallelDo, pipeline.OpParallelDo, pipeline.OpParallelDo, pipeline.OpParallelDo,
+		pipeline.OpParallelDo, pipeline.OpParallelDo, pipeline.OpParallelDo, pipeline.OpGroupByKey}
+
+	assert.ElementsMatch(t, expected, out)
 }

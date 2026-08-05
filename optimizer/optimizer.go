@@ -2,27 +2,56 @@ package optimizer
 
 import "mini-flumejava/pipeline"
 
-func SinkFlattens(p *pipeline.Pipeline) {
-	for i, nw := range p.Path() {
-		if nw.Kind != pipeline.OpFlatten {
-			continue
+// TODO add comments before I forget what I cooked
+func SinkFlattens(p *pipeline.Pipeline) *pipeline.Pipeline {
+	memo := map[*pipeline.NodeWrapper][]*pipeline.NodeWrapper{}
+
+	var rebuild func(old *pipeline.NodeWrapper) []*pipeline.NodeWrapper
+	rebuild = func(old *pipeline.NodeWrapper) []*pipeline.NodeWrapper {
+		if built, ok := memo[old]; ok {
+			return built
 		}
 
-		if len(nw.Dependants) != 1 {
-			continue
+		if old.Kind == pipeline.OpFlatten &&
+			len(old.Dependants) == 1 &&
+			old.Dependants[0].Kind == pipeline.OpParallelDo {
+
+			consumer := old.Dependants[0]
+			newEdges := []*pipeline.NodeWrapper{}
+			for _, producer := range old.Dependencies {
+				newProducers := rebuild(producer)
+				for _, np := range newProducers {
+					newEdge := consumer.RebuildWith(np)
+					newEdges = append(newEdges, newEdge)
+				}
+			}
+
+			memo[old] = nil
+			memo[consumer] = newEdges
+			return memo[old]
 		}
 
-		consumer := nw.Dependants[0]
-		if consumer.Kind != pipeline.OpParallelDo {
-			continue
+		if len(old.Dependencies) == 0 {
+			memo[old] = []*pipeline.NodeWrapper{old}
+			return memo[old]
 		}
 
-		for _, producer := range nw.Dependencies {
-			consumer = consumer.Rebuild(producer)
+		// base case -- move along the path as is
+		var newDeps []*pipeline.NodeWrapper
+		for _, dep := range old.Dependencies {
+			newDep := rebuild(dep)
+			newDeps = append(newDeps, newDep...)
 		}
-
-		p.RemoveNodeIdx(i)
+		rebuilt := old.RebuildWith(newDeps...)
+		memo[old] = []*pipeline.NodeWrapper{rebuilt}
+		return memo[old]
 	}
-}
 
-// After sorting you'll have an array to traverse, merge if parallelDo
+	newP := pipeline.NewPipeline()
+	for _, old := range p.Path() {
+		for _, nw := range rebuild(old) {
+			newP.AddNode(nw)
+		}
+	}
+	return newP
+}

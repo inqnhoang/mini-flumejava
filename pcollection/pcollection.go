@@ -46,7 +46,6 @@ func (pc *PCollection[T]) length() int {
 	return len(pc.elements)
 }
 
-// TODO: remove dependents & use nodewrappers
 func ParallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
 	// TODO not currency safe
 	out := &PCollection[R]{}
@@ -58,8 +57,8 @@ func ParallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
 	p := pc.Pipeline()
 	out.wrapper = p.Register(pipeline.OpParallelDo, out, pc.NodeWrapper())
 
-	out.wrapper.Rebuild = func(newInput *pipeline.NodeWrapper) *pipeline.NodeWrapper {
-		newPc := newInput.Ds.(*PCollection[T])
+	out.wrapper.RebuildWith = func(newInputs ...*pipeline.NodeWrapper) *pipeline.NodeWrapper {
+		newPc := newInputs[0].Ds.(*PCollection[T])
 		dup := ParallelDo(newPc, mapFn)
 		return dup.wrapper
 	}
@@ -101,6 +100,15 @@ func Flatten[T any](sources ...*PCollection[T]) *PCollection[T] {
 		return s.wrapper
 	})
 	out.wrapper = p.Register(pipeline.OpFlatten, out, deps...)
+
+	out.wrapper.RebuildWith = func(newInputs ...*pipeline.NodeWrapper) *pipeline.NodeWrapper {
+		newSources := u.MapSlice(newInputs, func(nw *pipeline.NodeWrapper) *PCollection[T] {
+			return nw.Ds.(*PCollection[T])
+		})
+
+		dup := Flatten(newSources...)
+		return dup.wrapper
+	}
 
 	return out
 }

@@ -23,7 +23,7 @@ func (p *Pipeline) Register(opKind OpKind, new Node, dependencies ...*NodeWrappe
 		dep.AddDependent(nw)
 	}
 
-	p.addNode(nw)
+	p.AddNode(nw)
 	return nw
 }
 
@@ -78,7 +78,7 @@ func (p *Pipeline) RemoveNodeIdx(idx int) {
 	}
 }
 
-func (p *Pipeline) addNode(nw *NodeWrapper) {
+func (p *Pipeline) AddNode(nw *NodeWrapper) {
 	p.nodes = append(p.nodes, nw)
 }
 

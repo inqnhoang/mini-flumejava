@@ -70,6 +70,12 @@ func GroupByKey[K comparable, V any](pc *PCollection[KV[K, V]]) *PTable[K, []V] 
 	p := pc.Pipeline()
 	out.wrapper = p.Register(pipeline.OpGroupByKey, out, pc.NodeWrapper())
 
+	out.wrapper.RebuildWith = func(newInputs ...*pipeline.NodeWrapper) *pipeline.NodeWrapper {
+		newPc := newInputs[0].Ds.(*PCollection[KV[K, V]])
+		dup := GroupByKey(newPc)
+		return dup.wrapper
+	}
+
 	return out
 }
 
@@ -87,5 +93,11 @@ func CombineValues[K comparable, V any, R any](pt *PTable[K, []V], reducFn func(
 
 	p := pt.Pipeline()
 	out.wrapper = p.Register(pipeline.OpCombineValues, out, pt.wrapper)
+
+	out.wrapper.RebuildWith = func(newInputs ...*pipeline.NodeWrapper) *pipeline.NodeWrapper {
+		newPt := newInputs[0].Ds.(*PTable[K, []V])
+		dup := CombineValues(newPt, reducFn)
+		return dup.wrapper
+	}
 	return out
 }
