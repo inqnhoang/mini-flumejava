@@ -2,6 +2,7 @@ package pcollection
 
 import (
 	"mini-flumejava/pipeline"
+	u "mini-flumejava/util"
 )
 
 // Key Value pair
@@ -74,6 +75,7 @@ func GroupByKey[K comparable, V any](pc *PCollection[KV[K, V]]) *PTable[K, []V] 
 	// TODO not concurrency safe
 	out := &PTable[K, []V]{}
 
+	out.NodeWrapper().SetEstimatedSize(int64(len(pc.elements) * int(u.TypeSize[V]())))
 	// DEFER
 	out.materialize = func() {
 		pc.Materialize()
@@ -120,6 +122,7 @@ func CombineValues[K comparable, V any, R any](pt *PTable[K, []V], reducFn func(
 	// TODO not currency safe
 	out := &PTable[K, R]{}
 
+	out.NodeWrapper().SetEstimatedSize(int64(len(pt.items) * (int(u.TypeSize[K]()) + int(u.TypeSize[V]()))))
 	// DEFER
 	out.materialize = func() {
 		pt.Materialize()

@@ -68,6 +68,8 @@ func ParallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
 
 	// DEFER
 	out := &PCollection[R]{}
+	out.NodeWrapper().SetEstimatedSize(int64(len(pc.elements) * int(u.TypeSize[T]())))
+
 	out.materialize = func() {
 		out.elements = u.MapSlice(pc.elements, mapFn)
 	}
@@ -113,6 +115,13 @@ func Flatten[T any](sources ...*PCollection[T]) *PCollection[T] {
 	}
 
 	out := &PCollection[T]{}
+
+	var size int64
+	for _, src := range sources {
+		size += int64(len(src.elements) * int(u.TypeSize[T]()))
+	}
+	out.NodeWrapper().SetEstimatedSize(size)
+
 	out.materialize = func() {
 		for _, src := range sources {
 			src.Materialize()

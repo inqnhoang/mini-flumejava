@@ -16,14 +16,18 @@ type Node interface {
 	Materialize()
 }
 
+// Node MetaData
 type NodeWrapper struct {
-	Ds           Node
-	Kind         OpKind
-	RebuildWith  func(newInputs ...*NodeWrapper) *NodeWrapper
-	Dependants   []*NodeWrapper
-	Dependencies []*NodeWrapper
-	pipeline     *Pipeline
-	remaining    int
+	Ds             Node
+	Kind           OpKind
+	RebuildWith    func(newInputs ...*NodeWrapper) *NodeWrapper
+	Dependants     []*NodeWrapper
+	Dependencies   []*NodeWrapper
+	Combinber      *NodeWrapper
+	pipeline       *Pipeline
+	EstimatedSize  int64
+	FusionBoundary bool
+	remaining      int
 }
 
 // getters & setters
@@ -43,6 +47,10 @@ func (nw *NodeWrapper) AddDependencies(dependencies []*NodeWrapper) {
 	for _, depedency := range dependencies {
 		nw.Dependencies = append(nw.Dependencies, depedency)
 	}
+}
+
+func (nw *NodeWrapper) SetEstimatedSize(size int64) {
+	nw.EstimatedSize = size
 }
 
 // Stringify OpKind
