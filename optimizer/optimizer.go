@@ -196,6 +196,23 @@ func walkChainToNextGroupByKey(start *pipeline.NodeWrapper) []*pipeline.NodeWrap
 	return chain
 }
 
+/*
+Fuses NodeWrapper into execution blocks marked by FusionBoundaries, and
+returns the final execution graph
+
+It performs the following steps:
+  - Traverses graph and generates chains of exeuction : ExecutionBlock
+  - Separates and walks from the node to find a fusion boundary
+  - Register ExecutionBlock to the MscrGraph
+
+Create a new chain and walk until:
+  - A fusion boundary is reached
+  - OR the operation is a Flatten
+  - OR the operation is a GroupByKey
+  - OR the number of dependents is not 1
+
+Returns a new *MscrGraph
+*/
 func MscrFusion(p *pipeline.Pipeline) *mscrgraph.MscrGraph {
 	mg := mscrgraph.NewMscrGraph()
 
@@ -233,12 +250,13 @@ func MscrFusion(p *pipeline.Pipeline) *mscrgraph.MscrGraph {
 	return mg
 }
 
+// Link MscrGraph's nodes' dependencies and dependents
 func linkBlocks(mg *mscrgraph.MscrGraph, links map[*pipeline.NodeWrapper]*mscrgraph.ExecutionBlock) {
-	for _, block := range mg.Nodes() { // however MscrGraph exposes its blocks
+	for _, block := range mg.Nodes() {
 		if len(block.Queue) == 0 {
 			continue
 		}
-		last := block.Queue[len(block.Queue)-1] // whatever type Queue holds
+		last := block.Queue[len(block.Queue)-1]
 
 		for _, dependant := range last.Dependants {
 			nextBlock, ok := links[dependant]
