@@ -3,6 +3,8 @@ package pcollection
 import (
 	"mini-flumejava/pipeline"
 	u "mini-flumejava/util"
+	"runtime"
+	"sync"
 )
 
 // Key Value pair
@@ -125,12 +127,30 @@ func CombineValues[K comparable, V any, R any](pt *PTable[K, []V], reducFn func(
 	out.NodeWrapper().SetEstimatedSize(int64(len(pt.items) * (int(u.TypeSize[K]()) + int(u.TypeSize[V]()))))
 	// DEFER
 	out.materialize = func() {
-		pt.Materialize()
+		n := pt.length()
+		out.items = make([]KV[K, R], n)
 
-		out.items = make([]KV[K, R], 0, pt.length())
-		for _, kv := range pt.items {
-			out.items = append(out.items, KV[K, R]{Key: kv.Key, Value: reducFn(kv.Value)})
+		numWorkers := runtime.GOMAXPROCS(0)
+		chunkSize := (n + numWorkers - 1) / numWorkers
+		var wg sync.WaitGroup
+
+		for w := 0; w < numWorkers; w++ {
+			start := w * chunkSize
+			end := min(start+chunkSize, n)
+
+			if start >= n {
+				break
+			}
+			wg.Add(1)
+			go func(start, end int) {
+				defer wg.Done()
+				for i := start; i < end; i++ {
+					kv := pt.items[i]
+					out.items[i] = KV[K, R]{Key: kv.Key, Value: reducFn(kv.Value)}
+				}
+			}(start, end)
 		}
+		wg.Wait()
 	}
 
 	p := pt.Pipeline()
