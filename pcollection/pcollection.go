@@ -3,6 +3,8 @@ package pcollection
 import (
 	"mini-flumejava/pipeline"
 	u "mini-flumejava/util"
+	"runtime"
+	"sync"
 )
 
 // PCollections represents a deferrable collection of elements
@@ -68,10 +70,31 @@ func ParallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
 
 	// DEFER
 	out := &PCollection[R]{}
-	out.NodeWrapper().SetEstimatedSize(int64(len(pc.elements) * int(u.TypeSize[T]())))
+	// out.NodeWrapper().SetEstimatedSize(int64(len(pc.elements) * int(u.TypeSize[T]())))
 
 	out.materialize = func() {
-		out.elements = u.MapSlice(pc.elements, mapFn)
+		n := len(pc.elements)
+		out.elements = make([]R, n)
+
+		numWorkers := runtime.GOMAXPROCS(0)
+		chunkSize := (n + numWorkers - 1) / numWorkers
+
+		var wg sync.WaitGroup
+		for w := 0; w < numWorkers; w++ {
+			start := w * chunkSize
+			end := min(start+chunkSize, n)
+			if start >= n {
+				break
+			}
+			wg.Add(1)
+			go func(start, end int) {
+				defer wg.Done()
+				for i := start; i < end; i++ {
+					out.elements[i] = mapFn(pc.elements[i])
+				}
+			}(start, end)
+		}
+		wg.Wait()
 	}
 	p := pc.Pipeline()
 
@@ -116,11 +139,11 @@ func Flatten[T any](sources ...*PCollection[T]) *PCollection[T] {
 
 	out := &PCollection[T]{}
 
-	var size int64
-	for _, src := range sources {
-		size += int64(len(src.elements) * int(u.TypeSize[T]()))
-	}
-	out.NodeWrapper().SetEstimatedSize(size)
+	// var size int64
+	// for _, src := range sources {
+	// 	size += int64(len(src.elements) * int(u.TypeSize[T]()))
+	// }
+	// out.NodeWrapper().SetEstimatedSize(size)
 
 	out.materialize = func() {
 		for _, src := range sources {
