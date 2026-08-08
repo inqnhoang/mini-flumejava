@@ -2,7 +2,9 @@ package optimizer
 
 import (
 	"math"
+	"mini-flumejava/mscrgraph"
 	"mini-flumejava/pipeline"
+	u "mini-flumejava/util"
 )
 
 /*
@@ -141,13 +143,18 @@ It performs the following steps:
 
 IN-PLACE
 */
-func InsertFusionBlocks(p *pipeline.Pipeline) {
+func FuseParallelDos(p *pipeline.Pipeline) {
 	for _, nw := range p.Path() {
 		if nw.Kind != pipeline.OpGroupByKey {
 			continue
 		}
 		chain := walkChainToNextGroupByKey(nw)
 		if len(chain) == 0 {
+			continue
+		}
+
+		last := chain[len(chain)-1]
+		if len(last.Dependants) != 1 || last.Dependants[0].Kind != pipeline.OpGroupByKey {
 			continue
 		}
 
@@ -187,4 +194,61 @@ func walkChainToNextGroupByKey(start *pipeline.NodeWrapper) []*pipeline.NodeWrap
 		cur = next
 	}
 	return chain
+}
+
+func MscrFusion(p *pipeline.Pipeline) *mscrgraph.MscrGraph {
+	mg := mscrgraph.NewMscrGraph()
+
+	links := map[*pipeline.NodeWrapper]*mscrgraph.ExecutionBlock{}
+	seen := map[*pipeline.NodeWrapper]bool{}
+
+	for _, nw := range p.Path() {
+		if ok := seen[nw]; ok {
+			continue
+		}
+		chain := mscrgraph.NewExecutionBlock()
+		// walk nodewrapper
+		cur := nw
+		for {
+			seen[cur] = true
+			chain.Queue = u.PushBack(chain.Queue, cur)
+			links[cur] = chain
+
+			if cur.FusionBoundary || cur.Kind == pipeline.OpFlatten || cur.Kind == pipeline.OpGroupByKey || len(cur.Dependants) != 1 {
+				break
+			}
+
+			cur = cur.Dependants[0]
+		}
+		mg.AddNode(chain)
+	}
+
+	linkBlocks(mg, links)
+
+	for _, node := range mg.Nodes() {
+		node.Remaining = len(node.Dependencies())
+	}
+	mg.SetNodes(mg.Sort())
+
+	return mg
+}
+
+func linkBlocks(mg *mscrgraph.MscrGraph, links map[*pipeline.NodeWrapper]*mscrgraph.ExecutionBlock) {
+	for _, block := range mg.Nodes() { // however MscrGraph exposes its blocks
+		if len(block.Queue) == 0 {
+			continue
+		}
+		last := block.Queue[len(block.Queue)-1] // whatever type Queue holds
+
+		for _, dependant := range last.Dependants {
+			nextBlock, ok := links[dependant]
+			if !ok {
+				continue
+			}
+			if nextBlock == block {
+				continue
+			}
+			mg.AddEdge(block, nextBlock)
+		}
+	}
 }

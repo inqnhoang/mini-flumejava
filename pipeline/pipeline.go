@@ -35,8 +35,6 @@ func (p *Pipeline) Path() []*NodeWrapper {
 
 // Runs the full pipeline, assumes they come in unsorted
 func (p *Pipeline) Run() {
-	p.Sort()
-
 	for _, nw := range p.Sort() {
 		nw.Ds.Materialize()
 	}
