@@ -77,12 +77,10 @@ func GroupByKey[K comparable, V any](pc *PCollection[KV[K, V]]) *PTable[K, []V] 
 	// TODO not concurrency safe
 	out := &PTable[K, []V]{}
 
-	out.NodeWrapper().SetEstimatedSize(int64(len(pc.elements) * int(u.TypeSize[V]())))
+	// out.NodeWrapper().SetEstimatedSize(int64(len(pc.elements) * int(u.TypeSize[V]())))
+
 	// DEFER
 	out.materialize = func() {
-		pc.Materialize()
-
-		// single pass
 		temp := make(map[K][]V)
 		for _, pv := range pc.elements {
 			temp[pv.Key] = append(temp[pv.Key], pv.Value)
@@ -121,7 +119,6 @@ It performs the following steps:
 Returns *NodeWrapper
 */
 func CombineValues[K comparable, V any, R any](pt *PTable[K, []V], reducFn func([]V) R) *PTable[K, R] {
-	// TODO not currency safe
 	out := &PTable[K, R]{}
 
 	out.NodeWrapper().SetEstimatedSize(int64(len(pt.items) * (int(u.TypeSize[K]()) + int(u.TypeSize[V]()))))

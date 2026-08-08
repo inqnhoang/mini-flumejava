@@ -66,12 +66,10 @@ It performs the following steps:
 Returns *NodeWrapper
 */
 func ParallelDo[T, R any](pc *PCollection[T], mapFn func(T) R) *PCollection[R] {
-	// TODO not currency safe
-
-	// DEFER
 	out := &PCollection[R]{}
 	// out.NodeWrapper().SetEstimatedSize(int64(len(pc.elements) * int(u.TypeSize[T]())))
 
+	// DEFER
 	out.materialize = func() {
 		n := len(pc.elements)
 		out.elements = make([]R, n)
@@ -145,20 +143,23 @@ func Flatten[T any](sources ...*PCollection[T]) *PCollection[T] {
 	// }
 	// out.NodeWrapper().SetEstimatedSize(size)
 
+	// DEFER
 	out.materialize = func() {
-		for _, src := range sources {
-			src.Materialize()
+		offsets := make([]int, len(sources)+1)
+		for i, src := range sources {
+			offsets[i+1] = offsets[i] + src.length()
 		}
+		out.elements = make([]T, offsets[len(sources)])
 
-		length := 0
-		for _, src := range sources {
-			length += src.length()
+		var wg sync.WaitGroup
+		for i, src := range sources {
+			wg.Add(1)
+			go func(i int, src *PCollection[T]) {
+				defer wg.Done()
+				copy(out.elements[offsets[i]:offsets[i+1]], src.elements)
+			}(i, src)
 		}
-
-		out.elements = make([]T, 0, length)
-		for _, src := range sources {
-			out.elements = append(out.elements, src.elements...)
-		}
+		wg.Wait()
 	}
 
 	deps := u.MapSlice(sources, func(s *PCollection[T]) *pipeline.NodeWrapper {
